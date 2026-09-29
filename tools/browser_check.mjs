@@ -200,11 +200,15 @@ writeFileSync(PDF_PATH, buf);
 // Chrome 把文字按字体子集 CID 编码写进内容流，字节里搜不到明文；改为：页数双读一致 + 每页有大量文字绘制指令
 const pages = countPages(buf);
 const ops = (pdfText(buf).match(/Tj|TJ/g) || []).length;
-let mdlsPages = -1;
-try { mdlsPages = Number(/kMDItemNumberOfPages = (\d+)/.exec(execSync(`mdls -name kMDItemNumberOfPages "${PDF_PATH}"`).toString())[1]); } catch {}
-check('导出的 PDF 报告：签名有效、页数（正则与 mdls 双读一致）、正文有文字绘制指令',
-  buf.slice(0, 5).toString() === '%PDF-' && pages >= 2 && pages <= 12 && pages === mdlsPages && ops > 300 && buf.length > 6000,
-  JSON.stringify({ pages, mdlsPages, ops, bytes: buf.length }));
+let mdlsPages = NaN;      // mdls 是加分项：/tmp 之类没被 Spotlight 索引的目录会读出 (null)，那时跳过这一读
+try {
+  const m = /kMDItemNumberOfPages = (\d+)/.exec(execSync(`mdls -name kMDItemNumberOfPages "${PDF_PATH}"`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+  if (m) mdlsPages = Number(m[1]);
+} catch {}
+check('导出的 PDF 报告：签名有效、页数合理（mdls 可读时双读一致）、正文有文字绘制指令',
+  buf.slice(0, 5).toString() === '%PDF-' && pages >= 2 && pages <= 12
+  && (!Number.isFinite(mdlsPages) || mdlsPages === pages) && ops > 300 && buf.length > 6000,
+  JSON.stringify({ pages, mdlsPages: Number.isFinite(mdlsPages) ? mdlsPages : 'n/a(未索引)', ops, bytes: buf.length }));
 await send('Emulation.setEmulatedMedia', { media: '' });
 await shot('09-report-print');
 
