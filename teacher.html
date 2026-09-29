@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SD認定試験 過去問クイズ（老师版）</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-mode="teacher" data-gate="1">
+
+<div class="gate" id="gate">
+  <form id="gate-form">
+    <h2>老师版登录</h2>
+    <p>SAP SD 認定試験 過去問クイズ · 含原表答案与解说</p>
+    <input id="gate-pw" type="password" placeholder="口令" autocomplete="current-password" autofocus>
+    <div class="err" id="gate-err"></div>
+    <button class="primary" type="submit">进入</button>
+  </form>
+</div>
+
+<header class="site"><div class="bar wrap">
+  <a class="brand" href="#/">SD認定試験 過去問<span>老师版</span></a>
+  <div class="topbar" id="topbar"></div>
+</div></header>
+
+<main class="wrap">
+  <section id="home"></section>
+  <section id="quiz" hidden></section>
+</main>
+
+<footer class="site"><div class="wrap">
+  题源：<code id="src"></code> · 口令校验在浏览器本地完成（改口令：<code>python3 tools/set_password.py 新口令</code>）
+  · <a href="index.html">学生版</a>
+</div></footer>
+
+<script src="data.js"></script>
+<script src="assets/app.js"></script>
+<script>
+// 老师版口令（FNV-1a 校验值，明文不写进文件）。默认口令：teacher
+const PW_HASH = "03274595";
+(function () {
+  const gate = document.getElementById("gate"), err = document.getElementById("gate-err"),
+        pw = document.getElementById("gate-pw");
+  function unlock() {
+    gate.classList.add("hide");
+    document.body.removeAttribute("data-gate");
+    sessionStorage.setItem("sdq_teacher", "1");
+    window.SDQ.boot();
+  }
+  if (sessionStorage.getItem("sdq_teacher") === "1") return unlock();   // 本次会话内不再重复登录
+  document.getElementById("gate-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (window.SDQ.fnv(pw.value) === PW_HASH) unlock();
+    else { err.textContent = "口令错误"; pw.value = ""; pw.focus(); }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# 题库来源（版权：SAP 認定試験過去問）+ 236 KB Excel，不进仓库
+*.xls
+*.xlsx
+
+# 解析中间产物与验收截图（tools/parse_quiz.py 重新生成；网站在 data.js 上运行）
+work/
+
+__pycache__/
+.DS_Store
