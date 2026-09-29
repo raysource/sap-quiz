@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import http from 'node:http';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import { execSync } from 'node:child_process';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const SHOTS = path.join(ROOT, 'work', 'shots');
@@ -68,6 +70,16 @@ const shot = async (name) => {
 };
 await send('Page.enable'); await send('Runtime.enable');
 
+// PDF 校验：页数 / 解压内容流里的文字（Chrome 用 FlateDecode）
+const countPages = buf => (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+const pdfText = buf => {
+  const s = buf.toString('latin1'); const re = /stream\r?\n/g; let out = '', m;
+  while ((m = re.exec(s))) {
+    const end = s.indexOf('endstream', m.index); if (end < 0) break;
+    try { out += zlib.inflateSync(Buffer.from(s.slice(m.index + m[0].length, end), 'latin1')).toString('latin1'); } catch {}
+  }
+  return out;
+};
 const go = async (page, hash = '') => { await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/${page}${hash}` }); await sleep(1200); };
 const STUDENT = 'index.html', TEACHER = 'teacher.html';
 await go(STUDENT);
@@ -137,7 +149,7 @@ const sum = await evalJs(`(() => {
            n0, total, cnt: document.querySelector('#quiz .qhead .k').textContent };
 })()`);
 check('提交后生成答题总结并给出分数（分数 = 独立算出的期望值）',
-  sum.shown === String(sum.expect) && sum.res.pct === sum.expect && /答题总结/.test(sum.h2[0]) && /逐题结果/.test(sum.h2[1]),
+  sum.shown === String(sum.expect) && sum.res.pct === sum.expect && /答题报告/.test(sum.h2[0]) && /逐题结果/.test(sum.h2[1]),
   JSON.stringify({ expect: sum.expect, shown: sum.shown, res: sum.res, h2: sum.h2 }));
 check('总结：正确陈述/全对题组/用时/错题清单齐全',
   sum.res.okS === sum.n0 && sum.res.nS === sum.total && sum.res.okG === 1 && sum.res.nG === 20 && sum.res.ms >= 0
@@ -146,6 +158,55 @@ check('总结：正确陈述/全对题组/用时/错题清单齐全',
 check('错题标出「你的答案：未作答」', sum.mine.every(t => /未作答/.test(t)) && sum.mine.length > 0, JSON.stringify(sum.mine));
 check('提交后计数显示本次得分', /已提交 · 本次得分 \d+ 分/.test(sum.cnt), sum.cnt);
 await shot('03-student-summary');
+
+/* ---- 导出 PDF 报告（打印媒体 + Page.printToPDF） ---- */
+await evalJs(`(() => { const i = document.querySelector('#quiz .summary .nameinput');
+  i.value = 'Jason #07'; i.dispatchEvent(new Event('input')); })()`);
+const rpt = await evalJs(`(() => ({
+  kv: [...document.querySelectorAll('#quiz .summary .kvrow')].map(r => r.innerText.replace(/\s+/g, ' ')),
+  hasName: !!document.querySelector('#quiz .summary .nameinput'),
+  saved: localStorage.getItem('sdq.name'),
+  foot: (document.querySelector('#quiz .summary .rptfoot') || {}).textContent || ''
+}))()`);
+check('报告抬头：套题/姓名/正确陈述/全对题组/已作答/用时/提交时间',
+  rpt.kv.length === 7 && /4日目/.test(rpt.kv[0]) && rpt.hasName && rpt.saved === 'Jason #07'
+  && rpt.kv.some(r => /正确陈述/.test(r)) && rpt.kv.some(r => /用时/.test(r)) && /github\.com\/raysource\/sap-quiz/.test(rpt.foot),
+  JSON.stringify(rpt));
+
+await send('Emulation.setEmulatedMedia', { media: 'print' });
+const pm = await evalJs(`(() => {
+  const txt = document.querySelector('#quiz .summary').innerText;
+  return {
+    card: getComputedStyle(document.querySelector('#quiz .q')).display,
+    head: getComputedStyle(document.querySelector('header.site')).display,
+    qhead: getComputedStyle(document.querySelector('.qhead')).display,
+    acts: getComputedStyle(document.querySelector('#quiz .summary .acts')).display,
+    report: getComputedStyle(document.querySelector('#quiz .summary .kv')).display,
+    nameBorder: getComputedStyle(document.querySelector('.nameinput')).borderTopWidth,
+    name: document.querySelector('.nameinput').value,
+    hasStats: /正确陈述/.test(txt) && /答题报告/.test(txt) && /错题与解说/.test(txt),
+    hasFoot: /github\\.com\\/raysource\\/sap-quiz/.test(txt)
+  };
+})()`);
+check('打印媒体：题目卡片/页头/工具条/按钮隐藏，只剩报告正文（姓名框无边框、含统计与页脚）',
+  pm.card === 'none' && pm.head === 'none' && pm.qhead === 'none' && pm.acts === 'none' && pm.report !== 'none'
+  && pm.nameBorder === '0px' && pm.name === 'Jason #07' && pm.hasStats && pm.hasFoot,
+  JSON.stringify(pm));
+
+const pdf = await send('Page.printToPDF', { printBackground: true });
+const buf = Buffer.from(pdf.data, 'base64');
+const PDF_PATH = path.join(SHOTS, 'report-4日目.pdf');
+writeFileSync(PDF_PATH, buf);
+// Chrome 把文字按字体子集 CID 编码写进内容流，字节里搜不到明文；改为：页数双读一致 + 每页有大量文字绘制指令
+const pages = countPages(buf);
+const ops = (pdfText(buf).match(/Tj|TJ/g) || []).length;
+let mdlsPages = -1;
+try { mdlsPages = Number(/kMDItemNumberOfPages = (\d+)/.exec(execSync(`mdls -name kMDItemNumberOfPages "${PDF_PATH}"`).toString())[1]); } catch {}
+check('导出的 PDF 报告：签名有效、页数（正则与 mdls 双读一致）、正文有文字绘制指令',
+  buf.slice(0, 5).toString() === '%PDF-' && pages >= 2 && pages <= 12 && pages === mdlsPages && ops > 300 && buf.length > 6000,
+  JSON.stringify({ pages, mdlsPages, ops, bytes: buf.length }));
+await send('Emulation.setEmulatedMedia', { media: '' });
+await shot('09-report-print');
 
 const locked = await evalJs(`(() => {
   const before = JSON.parse(localStorage.getItem('sdq.student.v1'))['4日目'].items[5].picks;
@@ -221,6 +282,12 @@ const wrongOnly = await evalJs(`(() => {
   return { name: document.querySelector('#quiz .qhead .name').textContent, cards: document.querySelectorAll('#quiz .q').length };
 })()`);
 check('老师版「只练错题」只留下答错的题组', /错题重做/.test(wrongOnly.name) && wrongOnly.cards === 1, JSON.stringify(wrongOnly));
+
+await send('Emulation.setEmulatedMedia', { media: 'print' });
+const tpm = await evalJs(`({ card: getComputedStyle(document.querySelector('#quiz .q')).display,
+  head: getComputedStyle(document.querySelector('header.site')).display })`);
+check('老师版打印保留题目卡片（学生版才隐藏）', tpm.card !== 'none' && tpm.head === 'none', JSON.stringify(tpm));
+await send('Emulation.setEmulatedMedia', { media: '' });
 
 /* ════════ 扫掠 + 收尾 ════════ */
 const sweep = [];

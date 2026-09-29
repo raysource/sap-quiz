@@ -391,13 +391,24 @@ function renderQuiz() {
     sum.innerHTML = "";
     if (!res || !allSubmitted()) return;
     const [txt, cls] = band(res.pct);
-    sum.append(el("h2", null, "答题总结 — " + sheet.name));
+    sum.append(el("h2", null, "答题报告 — " + sheet.name));
     const sc = el("div", "score");
     sc.append(el("b", null, String(res.pct)), el("span", "u", "分 / 100"), el("span", "band " + (cls === "ok" ? "" : cls), txt));
     sum.append(sc);
-    sum.append(el("p", "hint", "正确陈述 " + res.okS + " / " + res.nS + " · 全对题组 " + res.okG + " / " + res.nG
-      + " · 已作答 " + res.answered + " / " + res.nG + " · 用时 " + fmtMs(res.ms) + " · 提交时间 " + fmtTime(res.at)
-      + "（未作答按错误计分）"));
+    // 报告抬头（导出 PDF 时题目卡片会被隐藏，这里就是报告封面信息）
+    const name = el("input", "nameinput");
+    name.type = "text";
+    name.placeholder = "姓名 / 学号（会印在报告上）";
+    name.value = localStorage.getItem("sdq.name") || "";
+    name.oninput = () => localStorage.setItem("sdq.name", name.value);
+    const kv = el("div", "kv");
+    const kvrow = (k, v) => { const d = el("div", "kvrow"); d.append(el("span", "k", k), typeof v === "string" ? el("span", "v", v) : v); return d; };
+    kv.append(kvrow("套题", sheet.name), kvrow("姓名 / 学号", name),
+      kvrow("正确陈述", res.okS + " / " + res.nS), kvrow("全对题组", res.okG + " / " + res.nG),
+      kvrow("已作答", res.answered + " / " + res.nG), kvrow("用时", fmtMs(res.ms)),
+      kvrow("提交时间", fmtTime(res.at)));
+    sum.append(kv);
+    sum.append(el("p", "hint", "未作答按错误计分；分数 = 正确陈述 ÷ 总陈述 × 100。"));
 
     const tbl = el("table", "tbl");
     tbl.innerHTML = "<tr><th>#</th><th>要点</th><th>类型</th><th>结果</th></tr>";
@@ -455,13 +466,14 @@ function renderQuiz() {
       sum.append(box);
     });
 
-    const pr = el("button", "primary no-print", "打印 / 保存为 PDF");
-    pr.onclick = () => window.print();
+    const pr = el("button", "primary no-print", "导出 PDF 报告");
+    pr.onclick = () => window.print();      // 浏览器打印对话框里选「存储为 PDF」；打印媒体下只留本报告
     const back2 = el("button", "no-print", "返回目录");
     back2.onclick = () => { location.hash = "#/"; };
     const acts = el("div", "acts no-print");
     acts.append(pr, back2);
     sum.append(acts);
+    sum.append(el("p", "rptfoot", "报告生成 " + fmtTime(Date.now()) + " · SD 認定試験 過去問クイズ · https://github.com/raysource/sap-quiz"));
   }
   sum.__render = renderSummary;
   renderSummary();

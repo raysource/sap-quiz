@@ -74,7 +74,7 @@ li.right .sol,li.wrong .sol,.q.reveal .sol{display:block}
 .verdict.ok{color:var(--ok);font-weight:700}
 .verdict.ng{color:var(--ng);font-weight:700}
 .verdict .why{font-weight:400;color:var(--dim);margin-top:4px;white-space:pre-wrap}
-.summary{margin-top:18px}
+.summary{margin-top:18px;scroll-margin-top:72px}   /* 提交后滚到报告时别被吸顶的页头盖住 */
 table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;
   border:1px solid var(--line);border-radius:10px;overflow:hidden}
 table.tbl th,table.tbl td{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left}
@@ -93,6 +93,13 @@ table.tbl tr:last-child td{border-bottom:0}
 .wrongitem .mine{color:var(--ng)}
 .wrongitem .real{color:var(--ok)}
 .wrongitem .note{color:var(--dim);font-size:12.5px;white-space:pre-wrap}
+/* ---------- 报告抬头（导出 PDF 用同一份 DOM） ---------- */
+.kv{border:1px solid var(--line);border-radius:10px;background:#fff;margin:10px 0 4px;overflow:hidden}
+.kvrow{display:flex;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+.kvrow:last-child{border-bottom:0}
+.kvrow .k{color:var(--dim);flex:0 0 96px}
+.nameinput{font:inherit;border:1px solid var(--line);border-radius:6px;padding:2px 8px;width:min(100%,260px)}
+.rptfoot{color:var(--dim);font-size:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
 /* ---------- 老师版登录 ---------- */
 .gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50}
 .gate.hide{display:none}
@@ -106,9 +113,15 @@ table.tbl tr:last-child td{border-bottom:0}
 footer.site{border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:16px 0 30px;background:var(--bg)}
 @media (max-width:600px){ .qhead{position:static} ul.stmts li{flex-wrap:wrap} }
 @media print{
-  header.site,footer.site,.qhead,.acts,.hint,.no-print{display:none!important}
+  header.site,footer.site,.qhead,.acts,.hint,.no-print,#home{display:none!important}
+  /* 学生版：打印的是「答题报告」，题目卡片不进 PDF */
+  body[data-mode="student"] #quiz .q{display:none!important}
   body{background:#fff}
   .q{break-inside:avoid;page-break-inside:avoid;border-color:#ccc}
-  .summary h2{margin-top:0}
+  .summary h2{margin-top:0;border-bottom:0;font-size:15px}
+  .summary .kv,.summary table.tbl{font-size:11.5px}
+  .nameinput{border:0;padding:0;width:auto;font-weight:700}
+  .wrongitem{break-inside:avoid;page-break-inside:avoid}
+  .rptfoot{font-size:9.5px}
   a[href]:after{content:""}
 }
